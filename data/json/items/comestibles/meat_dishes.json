@@ -169,8 +169,7 @@
   {
     "type": "COMESTIBLE",
     "id": "cracklins",
-    "name": "cracklins",
-    "name_plural": "cracklins",
+    "name": { "str": "cracklins", "str_pl": "cracklins" },
     "weight": "42 g",
     "color": "brown",
     "spoils_in": "7 days",
@@ -265,8 +264,7 @@
   {
     "type": "COMESTIBLE",
     "id": "dry_fish",
-    "name": "dehydrated fish",
-    "name_plural": "dehydrated fish",
+    "name": { "str": "dehydrated fish", "str_pl": "dehydrated fish" },
     "copy-from": "fish_cooked",
     "primary_material": "cured_meat",
     "weight": "85 g",
@@ -548,8 +546,7 @@
   {
     "type": "COMESTIBLE",
     "id": "chili",
-    "name": "chili con carne",
-    "name_plural": "chilis con carne",
+    "name": { "str": "chili con carne", "str_pl": "chilis con carne" },
     "conditional_names": [
       { "type": "FLAG", "condition": "CANNIBALISM", "name": { "str": "chili con cabron", "str_pl": "chilis con cabron" } },
       {
@@ -763,8 +760,7 @@
   {
     "type": "COMESTIBLE",
     "id": "deluxe_beansnrice",
-    "name": "deluxe beans and rice",
-    "name_plural": "deluxe beans and rice",
+    "name": { "str": "deluxe beans and rice", "str_pl": "deluxe beans and rice" },
     "conditional_names": [
       {
         "type": "COMPONENT_ID",
@@ -855,8 +851,7 @@
   {
     "type": "COMESTIBLE",
     "id": "deluxe_eggs",
-    "name": "deluxe scrambled eggs",
-    "name_plural": "deluxe scrambled eggs",
+    "name": { "str": "deluxe scrambled eggs", "str_pl": "deluxe scrambled eggs" },
     "conditional_names": [
       {
         "type": "COMPONENT_ID",
@@ -1130,8 +1125,7 @@
   {
     "type": "COMESTIBLE",
     "id": "haggis",
-    "name": "haggis",
-    "name_plural": "haggii",
+    "name": { "str": "haggis", "str_pl": "haggises" },
     "conditional_names": [ { "type": "FLAG", "condition": "CANNIBALISM", "name": { "str": "human %s", "str_pl": "human %s" } } ],
     "//": "That's whisky without an 'e' because we're talking about Scotch whisky.",
     "weight": "156 g",
@@ -1153,8 +1147,7 @@
   {
     "type": "COMESTIBLE",
     "id": "sushi_fishroll",
-    "name": "fish makizushi",
-    "name_plural": "fish makizushi",
+    "name": { "str": "fish makizushi", "str_pl": "fish makizushi" },
     "weight": "159 g",
     "color": "green",
     "spoils_in": "12 hours",

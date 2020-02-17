@@ -116,7 +116,7 @@ Character::Character() :
 
     name.clear();
 
-    *path_settings = pathfinding_settings{ 0, 1000, 1000, 0, true, true, true, false };
+    *path_settings = pathfinding_settings{ 0, 1000, 1000, 0, true, true, true, false, true };
 
     move_mode = CMM_WALK;
 
@@ -2167,6 +2167,24 @@ ret_val<bool> Character::can_wear( const item &it, bool with_equip_change ) cons
             return ret_val<bool>::make_failure( _( "Cannot wear a helmet over %s." ),
                                                 ( has_trait( trait_HORNS_POINTED ) ? _( "horns" ) :
                                                   ( has_trait( trait_ANTENNAE ) ? _( "antennae" ) : _( "antlers" ) ) ) );
+        }
+    }
+
+    if( it.has_flag( flag_SPLINT ) ) {
+        bool need_splint = false;
+        for( const body_part bp : all_body_parts ) {
+            if( !it.covers( bp ) ) {
+                continue;
+            }
+            if( is_limb_broken( bp_to_hp( bp ) ) && !worn_with_flag( flag_SPLINT, bp ) ) {
+                need_splint = true;
+                break;
+            }
+        }
+        if( !need_splint ) {
+            return ret_val<bool>::make_failure( is_player() ?
+                                                _( "You don't have any broken limbs this could help." )
+                                                : _( "%s doesn't have any broken limbs this could help." ), name );
         }
     }
 
@@ -5953,6 +5971,7 @@ static const std::map<std::string, std::function <float( std::vector<const mutat
 mutation_value_map = {
     { "healing_awake", calc_mutation_value<&mutation_branch::healing_awake> },
     { "healing_resting", calc_mutation_value<&mutation_branch::healing_resting> },
+    { "mending_modifier", calc_mutation_value<&mutation_branch::mending_modifier> },
     { "hp_modifier", calc_mutation_value<&mutation_branch::hp_modifier> },
     { "hp_modifier_secondary", calc_mutation_value<&mutation_branch::hp_modifier_secondary> },
     { "hp_adjustment", calc_mutation_value<&mutation_branch::hp_adjustment> },
