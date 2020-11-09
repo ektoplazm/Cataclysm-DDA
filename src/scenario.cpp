@@ -1,7 +1,8 @@
 #include "scenario.h"
 
-#include <cstdlib>
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 
 #include "debug.h"
 #include "generic_factory.h"
@@ -10,12 +11,13 @@
 #include "mission.h"
 #include "mutation.h"
 #include "profession.h"
-#include "translations.h"
 #include "rng.h"
+#include "start_location.h"
+#include "translations.h"
 
 namespace
 {
-generic_factory<scenario> all_scenarios( "scenario", "ident" );
+generic_factory<scenario> all_scenarios( "scenario" );
 const string_id<scenario> generic_scenario_id( "evacuee" );
 } // namespace
 
@@ -33,7 +35,7 @@ bool string_id<scenario>::is_valid() const
     return all_scenarios.is_valid( *this );
 }
 
-scen_blacklist sc_blacklist;
+static scen_blacklist sc_blacklist;
 
 scenario::scenario()
     : id( "" ), _name_male( no_translation( "null" ) ),
@@ -61,7 +63,8 @@ void scenario::load( const JsonObject &jo, const std::string & )
 
     if( !was_loaded || jo.has_string( "description" ) ) {
         // These also may differ depending on the language settings!
-        const std::string desc = jo.get_string( "description" );
+        std::string desc;
+        mandatory( jo, false, "description", desc, text_style_check_reader() );
         _description_male = to_translation( "scen_desc_male", desc );
         _description_female = to_translation( "scen_desc_female", desc );
     }
@@ -89,6 +92,10 @@ void scenario::load( const JsonObject &jo, const std::string & )
     optional( jo, was_loaded, "flags", flags, auto_flags_reader<> {} );
     optional( jo, was_loaded, "map_extra", _map_extra, "mx_null" );
     optional( jo, was_loaded, "missions", _missions, auto_flags_reader<mission_type_id> {} );
+
+    if( jo.has_string( "vehicle" ) ) {
+        _starting_vehicle = vproto_id( jo.get_string( "vehicle" ) );
+    }
 }
 
 const scenario *scenario::generic()
@@ -109,7 +116,7 @@ const scenario *scenario::weighted_random()
     while( true ) {
         const scenario &scen = random_entry_ref( list );
 
-        if( x_in_y( 2, abs( scen.point_cost() ) + 2 ) ) {
+        if( x_in_y( 2, std::abs( scen.point_cost() ) + 2 ) ) {
             return &scen;
         }
         // else reroll in the while loop.
@@ -136,7 +143,7 @@ void scenario::check_definitions()
 
 static void check_traits( const std::set<trait_id> &traits, const string_id<scenario> &ident )
 {
-    for( auto &t : traits ) {
+    for( const auto &t : traits ) {
         if( !t.is_valid() ) {
             debugmsg( "trait %s for scenario %s does not exist", t.c_str(), ident.c_str() );
         }
@@ -145,7 +152,7 @@ static void check_traits( const std::set<trait_id> &traits, const string_id<scen
 
 void scenario::check_definition() const
 {
-    for( auto &p : professions ) {
+    for( const auto &p : professions ) {
         if( !p.is_valid() ) {
             debugmsg( "profession %s for scenario %s does not exist", p.c_str(), id.c_str() );
         }
@@ -156,7 +163,7 @@ void scenario::check_definition() const
         debugmsg( "Duplicate entries in the professions array." );
     }
 
-    for( auto &l : _allowed_locs ) {
+    for( const start_location_id &l : _allowed_locs ) {
         if( !l.is_valid() ) {
             debugmsg( "starting location %s for scenario %s does not exist", l.c_str(), id.c_str() );
         }
@@ -175,7 +182,7 @@ void scenario::check_definition() const
     check_traits( _forbidden_traits, id );
     MapExtras::get_function( _map_extra ); // triggers a debug message upon invalid input
 
-    for( auto &m : _missions ) {
+    for( const auto &m : _missions ) {
         if( !m.is_valid() ) {
             debugmsg( "starting mission %s for scenario %s does not exist", m.c_str(), id.c_str() );
         }
@@ -184,6 +191,11 @@ void scenario::check_definition() const
             debugmsg( "starting mission %s for scenario %s must include an origin of ORIGIN_GAME_START",
                       m.c_str(), id.c_str() );
         }
+    }
+
+    if( _starting_vehicle && !_starting_vehicle.is_valid() ) {
+        debugmsg( "vehicle prototype %s for profession %s does not exist", _starting_vehicle.c_str(),
+                  id.c_str() );
     }
 }
 
@@ -299,16 +311,24 @@ std::vector<string_id<profession>> scenario::permitted_professions() const
     for( const profession &p : all ) {
         const bool present = std::find( professions.begin(), professions.end(),
                                         p.ident() ) != professions.end();
+
+        bool conflicting_traits = scenario_traits_conflict_with_profession_traits( p );
+
         if( blacklist || professions.empty() ) {
-            if( !present && !p.has_flag( "SCEN_ONLY" ) ) {
-                res.push_back( p.ident() );
-            }
-        } else if( extra_professions ) {
-            if( present || !p.has_flag( "SCEN_ONLY" ) ) {
+            if( !present && !p.has_flag( "SCEN_ONLY" ) && !conflicting_traits ) {
                 res.push_back( p.ident() );
             }
         } else if( present ) {
-            res.push_back( p.ident() );
+            if( !conflicting_traits ) {
+                res.push_back( p.ident() );
+            } else {
+                debugmsg( "Scenario %s and profession %s have conflicting trait requirements",
+                          id.c_str(), p.ident().c_str() );
+            }
+        } else if( extra_professions ) {
+            if( !p.has_flag( "SCEN_ONLY" ) && !conflicting_traits ) {
+                res.push_back( p.ident() );
+            }
         }
     }
 
@@ -317,6 +337,33 @@ std::vector<string_id<profession>> scenario::permitted_professions() const
         res.push_back( profession::generic()->ident() );
     }
     return res;
+}
+
+bool scenario::scenario_traits_conflict_with_profession_traits( const profession &p ) const
+{
+    for( const auto &pt : p.get_forbidden_traits() ) {
+        if( is_locked_trait( pt ) ) {
+            return true;
+        }
+    }
+
+    for( auto &pt : p.get_locked_traits() ) {
+        if( is_forbidden_trait( pt ) ) {
+            return true;
+        }
+    }
+
+    //  check if:
+    //  locked traits for scenario prevent taking locked traits for professions
+    //  locked traits for professions prevent taking locked traits for scenario
+    for( const auto &st : get_locked_traits() ) {
+        for( auto &pt : p.get_locked_traits() ) {
+            if( are_conflicting_traits( st, pt ) || are_conflicting_traits( pt, st ) ) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 const profession *scenario::weighted_random_profession() const
@@ -350,6 +397,25 @@ std::string scenario::start_name() const
     return _start_name.translated();
 }
 
+int scenario::start_location_count() const
+{
+    return _allowed_locs.size();
+}
+
+int scenario::start_location_targets_count() const
+{
+    int cnt = 0;
+    for( const auto &sloc : _allowed_locs ) {
+        cnt += sloc.obj().targets_count();
+    }
+    return cnt;
+}
+
+vproto_id scenario::vehicle() const
+{
+    return _starting_vehicle;
+}
+
 bool scenario::traitquery( const trait_id &trait ) const
 {
     return _allowed_traits.count( trait ) != 0 || is_locked_trait( trait ) ||
@@ -378,7 +444,7 @@ bool scenario::has_flag( const std::string &flag ) const
 
 bool scenario::allowed_start( const start_location_id &loc ) const
 {
-    auto &vec = _allowed_locs;
+    const auto &vec = _allowed_locs;
     return std::find( vec.begin(), vec.end(), loc ) != vec.end();
 }
 

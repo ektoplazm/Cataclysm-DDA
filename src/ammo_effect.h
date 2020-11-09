@@ -1,12 +1,14 @@
 #pragma once
-#ifndef AMMO_EFFECT_H
-#define AMMO_EFFECT_H
+#ifndef CATA_SRC_AMMO_EFFECT_H
+#define CATA_SRC_AMMO_EFFECT_H
 
-#include <vector>
+#include <cstddef>
 #include <string>
+#include <vector>
 
 #include "explosion.h"
 #include "field_type.h"
+#include "string_id.h"
 #include "type_id.h"
 
 class JsonObject;
@@ -18,7 +20,7 @@ struct ammo_effect {
         void check() const;
 
     public:
-        field_type_id aoe_field_type = fd_null;
+        field_type_id aoe_field_type = fd_null.id_or( INVALID_FIELD_TYPE_ID );
         /** used during JSON loading only */
         std::string aoe_field_type_name = "fd_null";
         int aoe_intensity_min = 0;
@@ -34,8 +36,9 @@ struct ammo_effect {
         int aoe_check_sees_radius = 0;
         bool do_flashbang = false;
         bool do_emp_blast = false;
+        bool foamcrete_build = false;
 
-        field_type_id trail_field_type = fd_null;
+        field_type_id trail_field_type = fd_null.id_or( INVALID_FIELD_TYPE_ID );
         /** used during JSON loading only */
         std::string trail_field_type_name = "fd_null";
         int trail_intensity_min = 0;
@@ -65,4 +68,4 @@ const std::vector<ammo_effect> &get_all();
 
 extern ammo_effect_id AE_NULL;
 
-#endif
+#endif // CATA_SRC_AMMO_EFFECT_H

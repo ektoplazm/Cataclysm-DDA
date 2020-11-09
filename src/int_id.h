@@ -1,6 +1,6 @@
 #pragma once
-#ifndef INT_ID_H
-#define INT_ID_H
+#ifndef CATA_SRC_INT_ID_H
+#define CATA_SRC_INT_ID_H
 
 #include <functional>
 #include <string>
@@ -13,7 +13,7 @@ class string_id;
  * Just like the @ref string_id, this is a wrapper for int based identifiers.
  * The template parameter T specifies what kind of object it identifies (e.g. a trap type, monster
  * type, ...)
- *
+ * See `string_id` for documentation on usage.
  */
 template<typename T>
 class int_id
@@ -128,4 +128,4 @@ struct hash< int_id<T> > {
 };
 } // namespace std
 
-#endif
+#endif // CATA_SRC_INT_ID_H

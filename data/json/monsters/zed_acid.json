@@ -2,7 +2,7 @@
   {
     "id": "mon_zombie_acidic",
     "type": "MONSTER",
-    "name": "acidic zombie",
+    "name": { "str": "acidic zombie" },
     "description": "A sickly-looking dead one.  Its skin looks especially thin, with a sticky, yellow fluid flowing through the clearly visible veins.",
     "default_faction": "zombie",
     "bodytype": "human",
@@ -49,7 +49,7 @@
   {
     "id": "mon_zombie_corrosive",
     "type": "MONSTER",
-    "name": "corrosive zombie",
+    "name": { "str": "corrosive zombie" },
     "description": "This body has swollen to immense proportions, but still manages to hold itself together with semi-congealed acid all over its bloated body.  It clumsily moves around, but attacks with a large reserve of acid.",
     "default_faction": "zombie",
     "bodytype": "human",
@@ -70,6 +70,7 @@
     "melee_cut": 0,
     "armor_bash": 10,
     "armor_cut": 2,
+    "armor_bullet": 2,
     "armor_stab": 12,
     "vision_night": 3,
     "luminance": 0,
@@ -113,7 +114,7 @@
   {
     "id": "mon_zombie_spitter",
     "type": "MONSTER",
-    "name": "spitter zombie",
+    "name": { "str": "spitter zombie" },
     "description": "A hunched human body with its eyes pushed up into its forehead and drooping cheeks, most of its face is occupied by a puckered mouth.  Its stomach is swollen and nearly translucent, with a sickly yellow tint.",
     "default_faction": "zombie",
     "bodytype": "human",
@@ -160,7 +161,7 @@
   {
     "id": "mon_zombie_wretched",
     "type": "MONSTER",
-    "name": "wretched puker",
+    "name": { "str": "wretched puker" },
     "description": "A degenerate corpse, shambling as it walks.  Several junks and waste materials have unified into its skin and wounds around it reeks in black goo.",
     "default_faction": "zombie",
     "bodytype": "human",
@@ -204,5 +205,68 @@
       "PUSH_MON",
       "FILTHY"
     ]
+  },
+  {
+    "id": "mon_zombie_dog_acidic",
+    "type": "MONSTER",
+    "name": { "str": "acidic zombie dog" },
+    "description": "A deformed, sickly-looking animated corpse of a canine.  A dangerous-looking yellow saliva drips from its mouth.",
+    "default_faction": "zombie",
+    "aggression": 100,
+    "morale": 100,
+    "bodytype": "dog",
+    "symbol": "d",
+    "color": "light_gray_yellow",
+    "material": [ "flesh" ],
+    "volume": "30000 ml",
+    "weight": "40750 g",
+    "diff": 5,
+    "hp": 24,
+    "speed": 85,
+    "melee_skill": 3,
+    "melee_dice": 1,
+    "melee_dice_sides": 4,
+    "melee_cut": 2,
+    "dodge": 1,
+    "melee_damage": [ { "damage_type": "acid", "amount": 4 } ],
+    "special_attacks": [ { "type": "bite", "cooldown": 5 }, [ "ACID_BARF", 10 ] ],
+    "death_function": [ "NORMAL", "ACID" ],
+    "upgrades": { "half_life": 12, "into": "mon_zombie_dog_brute_acidic" },
+    "flags": [
+      "SEES",
+      "HEARS",
+      "SMELLS",
+      "STUMBLES",
+      "WARM",
+      "KEENNOSE",
+      "GOODHEARING",
+      "BASHES",
+      "POISON",
+      "NO_BREATHE",
+      "REVIVES",
+      "FILTHY",
+      "ACIDPROOF",
+      "ACID_BLOOD"
+    ]
+  },
+  {
+    "id": "mon_zombie_dog_brute_acidic",
+    "type": "MONSTER",
+    "copy-from": "mon_zombie_dog_acidic",
+    "name": { "str": "blistered horror" },
+    "description": "A huge canine with multiple large foul looking blisters covering its body.  A corrosive liquid spills from its menancing-looking mouth.",
+    "color": "yellow_white",
+    "upgrades": false,
+    "relative": {
+      "melee_dice": 1,
+      "melee_dice_sides": 4,
+      "melee_cut": 2,
+      "armor_bash": 4,
+      "armor_cut": 4,
+      "armor_bullet": 3,
+      "vision_night": 1
+    },
+    "proportional": { "hp": 1.8, "speed": 1.3, "volume": 1.4, "weigth": 1.1 },
+    "special_when_hit": [ "ACIDSPLASH", 100 ]
   }
 ]

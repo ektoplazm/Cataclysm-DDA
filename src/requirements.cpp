@@ -1,32 +1,50 @@
 #include "requirements.h"
 
-#include <climits>
-#include <cstdlib>
 #include <algorithm>
-#include <limits>
+#include <climits>
+#include <cmath>
+#include <cstdlib>
 #include <iterator>
+#include <limits>
 #include <list>
 #include <memory>
 #include <set>
 #include <stack>
-#include <unordered_map>
+#include <unordered_set>
 
-#include "avatar.h"
+#include "cata_assert.h"
 #include "cata_utility.h"
+#include "character.h"
+#include "color.h"
 #include "debug.h"
+#include "debug_menu.h"
+#include "enum_traits.h"
 #include "game.h"
 #include "generic_factory.h"
 #include "inventory.h"
+#include "item.h"
 #include "item_factory.h"
 #include "itype.h"
 #include "json.h"
+#include "make_static.h"
 #include "output.h"
-#include "string_formatter.h"
-#include "translations.h"
-#include "color.h"
-#include "item.h"
-#include "visitable.h"
 #include "point.h"
+#include "string_formatter.h"
+#include "string_id.h"
+#include "translations.h"
+#include "visitable.h"
+
+static const itype_id itype_char_forge( "char_forge" );
+static const itype_id itype_crucible( "crucible" );
+static const itype_id itype_fire( "fire" );
+static const itype_id itype_forge( "forge" );
+static const itype_id itype_mold_plastic( "mold_plastic" );
+static const itype_id itype_oxy_torch( "oxy_torch" );
+static const itype_id itype_press( "press" );
+static const itype_id itype_sewing_kit( "sewing_kit" );
+static const itype_id itype_UPS( "UPS" );
+static const itype_id itype_welder( "welder" );
+static const itype_id itype_welder_crude( "welder_crude" );
 
 static const trait_id trait_DEBUG_HS( "DEBUG_HS" );
 
@@ -101,6 +119,14 @@ std::string quality_requirement::to_string( const int, const int ) const
                           count, type.obj().name, level );
 }
 
+std::string quality_requirement::to_colored_string() const
+{
+    //~ %1$d: tool count, %2$s: quality requirement name, %3$d: quality level requirement
+    return string_format( ngettext( "%1$d tool with <info>%2$s of %3$d</info> or more",
+                                    "%1$d tools with <info>%2$s of %3$d</info> or more", count ),
+                          count, type.obj().name, level );
+}
+
 bool tool_comp::by_charges() const
 {
     return count > 0;
@@ -109,19 +135,20 @@ bool tool_comp::by_charges() const
 std::string tool_comp::to_string( const int batch, const int ) const
 {
     if( by_charges() ) {
+        int charge_total = count * batch;
         //~ %1$s: tool name, %2$d: charge requirement
         return string_format( npgettext( "requirement", "%1$s (%2$d charge)", "%1$s (%2$d charges)",
-                                         count * batch ),
-                              item::nname( type ), count * batch );
+                                         charge_total ),
+                              item::nname( type ), charge_total );
     } else {
-        return item::nname( type, abs( count ) );
+        return item::nname( type, std::abs( count ) );
     }
 }
 
 std::string item_comp::to_string( const int batch, const int avail ) const
 {
     const int c = std::abs( count ) * batch;
-    const auto type_ptr = item::find_type( type );
+    const itype *type_ptr = item::find_type( type );
     if( type_ptr->count_by_charges() ) {
         if( avail == item::INFINITE_CHARGES ) {
             //~ %1$s: item name, %2$d: charge requirement
@@ -185,11 +212,11 @@ void tool_comp::load( const JsonValue &value )
 {
     if( value.test_string() ) {
         // constructions uses this format: [ "tool", ... ]
-        type = value.get_string();
+        value.read( type, true );
         count = -1;
     } else {
         JsonArray comp = value.get_array();
-        type = comp.get_string( 0 );
+        comp.read( 0, type, true );
         count = comp.get_int( 1 );
         requirement = comp.size() > 2 && comp.get_string( 2 ) == "LIST";
     }
@@ -213,7 +240,7 @@ void tool_comp::dump( JsonOut &jsout ) const
 void item_comp::load( const JsonValue &value )
 {
     JsonArray comp = value.get_array();
-    type = comp.get_string( 0 );
+    comp.read( 0, type, true );
     count = comp.get_int( 1 );
     size_t handled = 2;
     while( comp.size() > handled ) {
@@ -301,6 +328,17 @@ requirement_data requirement_data::operator+( const requirement_data &rhs ) cons
     return res;
 }
 
+requirement_data requirement_data::operator+(
+    const std::pair<const requirement_id, int> &rhs ) const
+{
+    return *this + *rhs.first * rhs.second;
+}
+
+requirement_data requirement_data::operator+( const std::pair<requirement_id, int> &rhs ) const
+{
+    return *this + *rhs.first * rhs.second;
+}
+
 void requirement_data::load_requirement( const JsonObject &jsobj, const requirement_id &id )
 {
     requirement_data req;
@@ -322,7 +360,7 @@ void requirement_data::load_requirement( const JsonObject &jsobj, const requirem
 
 void requirement_data::save_requirement( const requirement_data &req, const requirement_id &id )
 {
-    auto dup = req;
+    requirement_data dup = req;
     if( !id.is_null() ) {
         dup.id_ = id;
     }
@@ -334,7 +372,7 @@ template<typename T>
 bool requirement_data::any_marked_available( const std::vector<T> &comps )
 {
     for( const auto &comp : comps ) {
-        if( comp.available == a_true ) {
+        if( comp.available == available_status::a_true ) {
             return true;
         }
     }
@@ -355,7 +393,7 @@ std::string requirement_data::print_all_objs( const std::string &header,
         []( const T & t ) {
             return t.to_string();
         } );
-        std::sort( alternatives.begin(), alternatives.end() );
+        std::sort( alternatives.begin(), alternatives.end(), localized_compare );
         buffer += join( alternatives, _( " or " ) );
     }
     if( buffer.empty() ) {
@@ -377,17 +415,19 @@ template<typename T>
 std::string requirement_data::print_missing_objs( const std::string &header,
         const std::vector< std::vector<T> > &objs )
 {
+    std::string separator_and = _( "and " );
+    std::string separator_or = _( " or " );
     std::string buffer;
     for( const auto &list : objs ) {
         if( any_marked_available( list ) ) {
             continue;
         }
         if( !buffer.empty() ) {
-            buffer += std::string( "\n" ) + _( "and " );
+            buffer += std::string( "\n" ) + separator_and;
         }
         for( auto it = list.begin(); it != list.end(); ++it ) {
             if( it != list.begin() ) {
-                buffer += _( " or " );
+                buffer += separator_or;
             }
             buffer += it->to_string();
         }
@@ -450,39 +490,78 @@ void requirement_data::check_consistency()
     }
 }
 
-template <typename T, typename Getter>
-void inline_requirements( std::vector< std::vector<T> > &list, Getter getter )
+template <typename T>
+void inline_requirements( std::vector<std::vector<T>> &list,
+                          const std::function<const std::vector<std::vector<T>> & ( const requirement_data & )> &getter )
 {
-    std::set<requirement_id> already_nested;
-    for( auto &vec : list ) {
-        // We always need to restart from the beginning in case of vector relocation
-        while( true ) {
-            auto iter = std::find_if( vec.begin(), vec.end(), []( const T & req ) {
-                return req.requirement;
-            } );
-            if( iter == vec.end() ) {
-                break;
-            }
+    // add a single component to the vector. If component already exists, chooses min count
+    const auto add_component = []( const T & comp, std::vector<T> &accum ) {
+        auto iter = std::find_if( accum.begin(), accum.end(), [&]( const T & req ) {
+            return !req.requirement && req.type == comp.type;
+        } );
+        if( iter == accum.end() ) {
+            accum.push_back( comp ); // component doesn't exist yet, adding it
+        } else {
+            // this is the list of alternatives (a OR b OR c), so if there are two identical components
+            // with the different counts as an alternatives, the one with the lowest count is selected
+            iter->count = std::min( comp.count, iter->count );
+        }
+    };
 
-            const auto req_id = requirement_id( iter->type );
-            if( !req_id.is_valid() ) {
-                debugmsg( "Tried to inline unknown requirement %s", req_id.c_str() );
+    // if `comp` is a component, adds it to the `accum`
+    // if it's a requirement, recursively expands it into simple components and adds them to the vector
+    const auto inline_one = [&]( const T & comp, std::vector<T> &accum ) {
+        std::set<requirement_id> already_nested;
+        std::list<requirement_id> stack;
+
+        std::function<void( const T &comp )> rec;
+        rec = [&]( const T & comp ) {
+            // add simple component to the vector
+            if( !comp.requirement ) {
+                add_component( comp, accum );
                 return;
             }
-
-            if( already_nested.count( req_id ) > 0 ) {
-                debugmsg( "Tried to inline requirement %s which was inlined before in the same pass (infinite loop?)",
-                          req_id.c_str() );
+            // otherwise expand component as requirement
+            const requirement_id r( comp.type.str() );
+            if( !r.is_valid() ) {
+                debugmsg( "Tried to inline unknown requirement %s", r.c_str() );
                 return;
             }
+            // stack just holds the current path of inlining for debug purposes
+            stack.push_back( r );
+            if( already_nested.count( r ) ) {
+                // print debug msg and skip just this one requirement
+                debugmsg( "Tried to inline requirement %s which forms a cycle: %s",
+                r.c_str(),  debug_menu::iterable_to_string( stack, " -> ", []( const requirement_id & r ) {
+                    return r.str();
+                } ) );
+                stack.pop_back();
+                return;
+            }
+            already_nested.insert( r );
 
-            already_nested.insert( req_id );
-            const auto &req = req_id.obj();
-            const requirement_data multiplied = req * iter->count;
-            iter = vec.erase( iter );
+            const auto &req = r.obj();
+            const requirement_data multiplied = req * comp.count;
 
-            const auto &to_inline = getter( multiplied );
-            vec.insert( iter, to_inline.front().begin(), to_inline.front().end() );
+            const std::vector<std::vector<T>> &to_inline = getter( multiplied );
+            if( !to_inline.empty() ) {
+                const std::vector<T> &nested = to_inline.front();
+                for( const T &nested_comp : nested ) {
+                    rec( nested_comp );
+                }
+            }
+            already_nested.erase( r );
+            stack.pop_back();
+        };
+
+        rec( comp );
+    };
+
+    for( std::vector<T> &vec : list ) {
+        const std::vector<T> vec_copy = vec;
+        vec.clear();
+        for( const T &comp  : vec_copy ) {
+            inline_one( comp, vec );
         }
     }
 }
@@ -490,10 +569,11 @@ void inline_requirements( std::vector< std::vector<T> > &list, Getter getter )
 void requirement_data::finalize()
 {
     for( auto &r : const_cast<std::map<requirement_id, requirement_data> &>( all() ) ) {
-        inline_requirements( r.second.tools, []( const requirement_data & d ) {
+        inline_requirements<tool_comp>( r.second.tools, []( const requirement_data & d ) -> const auto & {
             return d.get_tools();
         } );
-        inline_requirements( r.second.components, []( const requirement_data & d ) {
+        inline_requirements<item_comp>( r.second.components,
+        []( const requirement_data & d ) -> const auto & {
             return d.get_components();
         } );
         auto &vec = r.second.tools;
@@ -518,7 +598,7 @@ void requirement_data::reset()
 
 std::vector<std::string> requirement_data::get_folded_components_list( int width, nc_color col,
         const inventory &crafting_inv, const std::function<bool( const item & )> &filter, int batch,
-        std::string hilite, requirement_display_flags flags ) const
+        const std::string &hilite, requirement_display_flags flags ) const
 {
     std::vector<std::string> out_buffer;
     if( components.empty() ) {
@@ -554,8 +634,8 @@ std::vector<std::string> requirement_data::get_folded_list( int width,
             nc_color color = component.get_color( has_one, crafting_inv, filter, batch );
             const std::string color_tag = get_tag_from_color( color );
             int qty = 0;
-            if( component.get_component_type() == COMPONENT_ITEM ) {
-                const itype_id item_id = static_cast<itype_id>( component.type );
+            if( component.get_component_type() == component_type::ITEM ) {
+                const itype_id item_id = itype_id( component.type.str() );
                 if( item::count_by_charges( item_id ) ) {
                     qty = crafting_inv.charges_of( item_id, INT_MAX, filter );
                 } else {
@@ -577,7 +657,7 @@ std::vector<std::string> requirement_data::get_folded_list( int width,
             }
             buffer_has.push_back( text + color_tag );
         }
-        std::sort( list_as_string.begin(), list_as_string.end() );
+        std::sort( list_as_string.begin(), list_as_string.end(), localized_compare );
 
         const std::string separator = colorize( _( " OR " ), c_white );
         const std::string unfolded = join( list_as_string, separator );
@@ -618,7 +698,7 @@ std::vector<std::string> requirement_data::get_folded_tools_list( int width, nc_
 bool requirement_data::can_make_with_inventory( const inventory &crafting_inv,
         const std::function<bool( const item & )> &filter, int batch, craft_flags flags ) const
 {
-    if( g->u.has_trait( trait_DEBUG_HS ) ) {
+    if( get_player_character().has_trait( trait_DEBUG_HS ) ) {
         return true;
     }
 
@@ -650,16 +730,17 @@ bool requirement_data::has_comps( const inventory &crafting_inv,
     for( const auto &set_of_tools : vec ) {
         bool has_tool_in_set = false;
         int UPS_charges_used = std::numeric_limits<int>::max();
-        for( const auto &tool : set_of_tools ) {
-            if( tool.has( crafting_inv, filter, batch, flags,
-            [ &UPS_charges_used ]( int charges ) {
+        const std::function<void( int )> use_ups = [ &UPS_charges_used ]( int charges ) {
             UPS_charges_used = std::min( UPS_charges_used, charges );
-            } ) ) {
-                tool.available = a_true;
+        };
+
+        for( const auto &tool : set_of_tools ) {
+            if( tool.has( crafting_inv, filter, batch, flags, use_ups ) ) {
+                tool.available = available_status::a_true;
             } else {
-                tool.available = a_false;
+                tool.available = available_status::a_false;
             }
-            has_tool_in_set = has_tool_in_set || tool.available == a_true;
+            has_tool_in_set = has_tool_in_set || tool.available == available_status::a_true;
         }
         if( !has_tool_in_set ) {
             retval = false;
@@ -670,7 +751,7 @@ bool requirement_data::has_comps( const inventory &crafting_inv,
     }
 
     if( total_UPS_charges_used > 0 &&
-        total_UPS_charges_used > crafting_inv.charges_of( "UPS" ) ) {
+        total_UPS_charges_used > crafting_inv.charges_of( itype_UPS ) ) {
         return false;
     }
     return retval;
@@ -678,9 +759,9 @@ bool requirement_data::has_comps( const inventory &crafting_inv,
 
 bool quality_requirement::has(
     const inventory &crafting_inv, const std::function<bool( const item & )> &, int,
-    craft_flags, std::function<void( int )> ) const
+    craft_flags, const std::function<void( int )> & ) const
 {
-    if( g->u.has_trait( trait_DEBUG_HS ) ) {
+    if( get_player_character().has_trait( trait_DEBUG_HS ) ) {
         return true;
     }
     return crafting_inv.has_quality( type, level, count );
@@ -689,7 +770,8 @@ bool quality_requirement::has(
 nc_color quality_requirement::get_color( bool has_one, const inventory &,
         const std::function<bool( const item & )> &, int ) const
 {
-    if( available == a_true ) {
+    if( get_player_character().has_trait( trait_DEBUG_HS ) ||
+        available == available_status::a_true ) {
         return c_green;
     }
     return has_one ? c_dark_gray : c_red;
@@ -697,9 +779,9 @@ nc_color quality_requirement::get_color( bool has_one, const inventory &,
 
 bool tool_comp::has(
     const inventory &crafting_inv, const std::function<bool( const item & )> &filter, int batch,
-    craft_flags flags, std::function<void( int )> visitor ) const
+    craft_flags flags, const std::function<void( int )> &visitor ) const
 {
-    if( g->u.has_trait( trait_DEBUG_HS ) ) {
+    if( get_player_character().has_trait( trait_DEBUG_HS ) ) {
         return true;
     }
     if( !by_charges() ) {
@@ -719,7 +801,7 @@ bool tool_comp::has(
 nc_color tool_comp::get_color( bool has_one, const inventory &crafting_inv,
                                const std::function<bool( const item & )> &filter, int batch ) const
 {
-    if( available == a_insufficent ) {
+    if( available == available_status::a_insufficent ) {
         return c_brown;
     } else if( has( crafting_inv, filter, batch ) ) {
         return c_green;
@@ -729,9 +811,9 @@ nc_color tool_comp::get_color( bool has_one, const inventory &crafting_inv,
 
 bool item_comp::has(
     const inventory &crafting_inv, const std::function<bool( const item & )> &filter, int batch,
-    craft_flags, std::function<void( int )> ) const
+    craft_flags, const std::function<void( int )> & ) const
 {
-    if( g->u.has_trait( trait_DEBUG_HS ) ) {
+    if( get_player_character().has_trait( trait_DEBUG_HS ) ) {
         return true;
     }
     const int cnt = std::abs( count ) * batch;
@@ -745,7 +827,7 @@ bool item_comp::has(
 nc_color item_comp::get_color( bool has_one, const inventory &crafting_inv,
                                const std::function<bool( const item & )> &filter, int batch ) const
 {
-    if( available == a_insufficent ) {
+    if( available == available_status::a_insufficent ) {
         return c_brown;
     } else if( has( crafting_inv, filter, batch ) ) {
         return c_green;
@@ -788,12 +870,12 @@ bool requirement_data::check_enough_materials( const inventory &crafting_inv,
 bool requirement_data::check_enough_materials( const item_comp &comp, const inventory &crafting_inv,
         const std::function<bool( const item & )> &filter, int batch ) const
 {
-    if( comp.available != a_true ) {
+    if( comp.available != available_status::a_true ) {
         return false;
     }
     const int cnt = std::abs( comp.count ) * batch;
     const tool_comp *tq = find_by_type( tools, comp.type );
-    if( tq != nullptr && tq->available == a_true ) {
+    if( tq != nullptr && tq->available == available_status::a_true ) {
         // The very same item type is also needed as tool!
         // Use charges of it, or use it by count?
         const int tc = tq->by_charges() ? 1 : std::abs( tq->count );
@@ -814,7 +896,7 @@ bool requirement_data::check_enough_materials( const item_comp &comp, const inve
         const tool_comp t_tmp( comp.type, -( cnt + tc ) ); // not by charges!
         // batch factor is explicitly 1, because it's already included in the count.
         if( !i_tmp.has( crafting_inv, filter, 1 ) && !t_tmp.has( crafting_inv, filter, 1 ) ) {
-            comp.available = a_insufficent;
+            comp.available = available_status::a_insufficent;
         }
     }
     const itype *it = item::find_type( comp.type );
@@ -825,15 +907,15 @@ bool requirement_data::check_enough_materials( const item_comp &comp, const inve
         }
         // This item can be used for the quality requirement, same as above for specific
         // tools applies.
-        if( !crafting_inv.has_quality( qr->type, qr->level, qr->count + abs( comp.count ) ) ) {
-            comp.available = a_insufficent;
+        if( !crafting_inv.has_quality( qr->type, qr->level, qr->count + std::abs( comp.count ) ) ) {
+            comp.available = available_status::a_insufficent;
         }
     }
-    return comp.available == a_true;
+    return comp.available == available_status::a_true;
 }
 
 template <typename T>
-static bool apply_blacklist( std::vector<std::vector<T>> &vec, const std::string &id )
+static bool apply_blacklist( std::vector<std::vector<T>> &vec, const itype_id &id )
 {
     // remove all instances of @id type from each of the options
     for( auto &opts : vec ) {
@@ -855,15 +937,15 @@ static bool apply_blacklist( std::vector<std::vector<T>> &vec, const std::string
     return blacklisted;
 }
 
-void requirement_data::blacklist_item( const std::string &id )
+void requirement_data::blacklist_item( const itype_id &id )
 {
     blacklisted |= apply_blacklist( tools, id );
     blacklisted |= apply_blacklist( components, id );
 }
 
 template <typename T>
-static void apply_replacement( std::vector<std::vector<T>> &vec, const std::string &id,
-                               const std::string &replacement )
+static void apply_replacement( std::vector<std::vector<T>> &vec, const itype_id &id,
+                               const itype_id &replacement )
 {
     // If the target and replacement are both present, remove the target.
     // If only the target is present, replace it.
@@ -933,32 +1015,32 @@ requirement_data requirement_data::disassembly_requirements() const
             const itype_id &type = tool.type;
 
             // If crafting required a welder or forge then disassembly requires metal sawing
-            if( type == "welder" || type == "welder_crude" || type == "oxy_torch" ||
-                type == "forge" || type == "char_forge" ) {
+            if( type == itype_welder || type == itype_welder_crude || type == itype_oxy_torch ||
+                type == itype_forge || type == itype_char_forge ) {
                 new_qualities.emplace_back( quality_id( "SAW_M_FINE" ), 1, 1 );
                 replaced = true;
                 break;
             }
             //This only catches instances where the two tools are explicitly stated, and not just the required sewing quality
-            if( type == "sewing_kit" ||
-                type == "mold_plastic" ) {
+            if( type == itype_sewing_kit ||
+                type == itype_mold_plastic ) {
                 new_qualities.emplace_back( quality_id( "CUT" ), 1, 1 );
                 replaced = true;
                 break;
             }
 
-            if( type == "crucible" ) {
+            if( type == itype_crucible ) {
                 replaced = true;
                 break;
             }
             //This ensures that you don't need a hand press to break down reloaded ammo.
-            if( type == "press" ) {
+            if( type == itype_press ) {
                 replaced = true;
                 remove_fire = true;
                 new_qualities.emplace_back( quality_id( "PULL" ), 1, 1 );
                 break;
             }
-            if( type == "fire" && remove_fire ) {
+            if( type == itype_fire && remove_fire ) {
                 replaced = true;
                 break;
             }
@@ -1027,7 +1109,7 @@ requirement_data requirement_data::disassembly_requirements() const
     []( std::vector<item_comp> &cov ) {
         cov.erase( std::remove_if( cov.begin(), cov.end(),
         []( const item_comp & comp ) {
-            return !comp.recoverable || item( comp.type ).has_flag( "UNRECOVERABLE" );
+            return !comp.recoverable || item( comp.type ).has_flag( STATIC( flag_str_id( "UNRECOVERABLE" ) ) );
         } ), cov.end() );
         return cov.empty();
     } ), ret.components.end() );
@@ -1041,7 +1123,7 @@ requirement_data requirement_data::continue_requirements( const std::vector<item
     // Create an empty requirement_data
     requirement_data ret;
 
-    // For items we cant change what alternative we selected half way through
+    // For items we can't change what alternative we selected half way through
     for( const item_comp &it : required_comps ) {
         ret.components.emplace_back( std::vector<item_comp>( {it} ) );
     }
@@ -1092,8 +1174,9 @@ static std::vector<std::vector<T>> consolidate( std::vector<std::vector<T>> old_
                                 const Accum &accum )
 {
     const auto type_lt = []( const T & lhs, const T & rhs ) -> bool {
-        return std::forward_as_tuple( lhs.type, lhs.requirement )
-        < std::forward_as_tuple( rhs.type, rhs.requirement );
+        //TODO change to use localized sorting
+        return std::forward_as_tuple( lhs.type.str(), lhs.requirement )
+        < std::forward_as_tuple( rhs.type.str(), rhs.requirement );
     };
     // in order to simplify blueprint requirements, we merge a longer requirement
     // list into a shorter requirement list whose types are a subsequence of the
@@ -1276,8 +1359,8 @@ static void expand_item_in_reqs(
     const requirement_data::alter_item_comp_vector &to_expand, size_t orig_index, size_t index,
     std::vector<requirement_data::alter_item_comp_vector> &result )
 {
-    assert( req_prefix.size() >= orig_index );
-    assert( orig_index < index );
+    cata_assert( req_prefix.size() >= orig_index );
+    cata_assert( orig_index < index );
 
     if( index == to_expand.size() ) {
         // We reached the end without using the leftovers.  So need to add them
@@ -1429,14 +1512,14 @@ std::vector<const requirement_data *> deduped_requirement_data::feasible_alterna
 }
 
 const requirement_data *deduped_requirement_data::select_alternative(
-    player &crafter, const std::function<bool( const item & )> &filter, int batch,
+    Character &crafter, const std::function<bool( const item & )> &filter, int batch,
     craft_flags flags ) const
 {
     return select_alternative( crafter, crafter.crafting_inventory(), filter, batch, flags );
 }
 
 const requirement_data *deduped_requirement_data::select_alternative(
-    player &crafter, const inventory &inv, const std::function<bool( const item & )> &filter,
+    Character &crafter, const inventory &inv, const std::function<bool( const item & )> &filter,
     int batch, craft_flags flags ) const
 {
     const std::vector<const requirement_data *> all_reqs =

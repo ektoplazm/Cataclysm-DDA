@@ -14,7 +14,7 @@
   {
     "type": "npc_class",
     "id": "NC_REFUGEE_Mandeep",
-    "name": "Refugee",
+    "name": { "str": "Refugee" },
     "job_description": "I'm just trying to survive.",
     "common": false,
     "//": "Mandeep is the father of a small family.  They've made it through this unscathed and have a lot of survivor's guilt as a result.",
@@ -51,7 +51,7 @@
     "type": "item_group",
     "id": "REFUGEE_Mandeep_carried",
     "subtype": "collection",
-    "entries": [ { "item": "1st_aid" } ]
+    "entries": [ { "group": "used_1st_aid" } ]
   },
   {
     "type": "item_group",

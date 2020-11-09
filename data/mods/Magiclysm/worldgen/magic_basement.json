@@ -34,7 +34,7 @@
       ],
       "palettes": [ "standard_domestic_palette" ],
       "place_traps": [ { "trap": "tr_magic_door", "x": 21, "y": 4 } ],
-      "place_item": [ { "item": "television", "x": 21, "y": 10 } ],
+      "place_item": [ { "item": "television", "x": 21, "y": 10 }, { "item": "wizard_photo", "x": 16, "y": 6 } ],
       "place_loot": [
         { "item": "corpse", "x": 2, "y": 6, "chance": 100 },
         { "item": "translocate_spellbook", "x": 2, "y": 6, "chance": 100 },
@@ -96,12 +96,12 @@
     "name": "magic door",
     "color": "brown",
     "symbol": "+",
-    "visibility": 99,
+    "visibility": 1,
     "avoidance": 99,
     "difficulty": 99,
     "action": "map_regen",
     "map_regen": "magic_door_appear",
-    "benign": true
+    "benign": false
   },
   {
     "type": "mapgen",

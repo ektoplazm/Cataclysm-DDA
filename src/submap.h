@@ -1,17 +1,17 @@
 #pragma once
-#ifndef SUBMAP_H
-#define SUBMAP_H
+#ifndef CATA_SRC_SUBMAP_H
+#define CATA_SRC_SUBMAP_H
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
-#include <memory>
-#include <vector>
-#include <string>
 #include <iterator>
 #include <map>
+#include <memory>
+#include <string>
+#include <vector>
 
 #include "active_item_cache.h"
-#include "basecamp.h"
 #include "calendar.h"
 #include "colony.h"
 #include "computer.h"
@@ -19,16 +19,18 @@
 #include "field.h"
 #include "game_constants.h"
 #include "item.h"
-#include "type_id.h"
-#include "vehicle.h"
+#include "mapgen.h"
 #include "point.h"
+#include "type_id.h"
 
 class JsonIn;
 class JsonOut;
+class basecamp;
 class map;
-struct trap;
-struct ter_t;
+class vehicle;
 struct furn_t;
+struct ter_t;
+struct trap;
 
 struct spawn_point {
     point pos;
@@ -38,11 +40,12 @@ struct spawn_point {
     int mission_id;
     bool friendly;
     std::string name;
+    spawn_data data;
     spawn_point( const mtype_id &T = mtype_id::NULL_ID(), int C = 0, point P = point_zero,
                  int FAC = -1, int MIS = -1, bool F = false,
-                 const std::string &N = "NONE" ) :
+                 const std::string &N = "NONE", spawn_data SD = spawn_data() ) :
         pos( P ), count( C ), type( T ), faction_id( FAC ),
-        mission_id( MIS ), friendly( F ), name( N ) {}
+        mission_id( MIS ), friendly( F ), name( N ), data( SD ) {}
 };
 
 template<int sx, int sy>
@@ -63,6 +66,10 @@ class submap : maptile_soa<SEEX, SEEY>
 {
     public:
         submap();
+        submap( submap && );
+        ~submap();
+
+        submap &operator=( submap && );
 
         trap_id get_trap( const point &p ) const {
             return trp[p.x][p.y];
@@ -224,7 +231,7 @@ class submap : maptile_soa<SEEX, SEEY>
 
         // If is_uniform is true, this submap is a solid block of terrain
         // Uniform submaps aren't saved/loaded, because regenerating them is faster
-        bool is_uniform;
+        bool is_uniform = false;
 
         std::vector<cosmetic_t> cosmetics; // Textual "visuals" for squares
 
@@ -262,16 +269,13 @@ struct maptile {
         friend map; // To allow "sliding" the tile in x/y without bounds checks
         friend submap;
         submap *const sm;
-        size_t x;
-        size_t y;
+        point pos_;
         point pos() const {
-            return point( x, y );
+            return pos_;
         }
 
-        maptile( submap *sub, const size_t nx, const size_t ny ) :
-            sm( sub ), x( nx ), y( ny ) { }
         maptile( submap *sub, const point &p ) :
-            sm( sub ), x( p.x ), y( p.y ) { }
+            sm( sub ), pos_( p ) { }
     public:
         trap_id get_trap() const {
             return sm->get_trap( pos() );
@@ -302,16 +306,6 @@ struct maptile {
 
         field_entry *find_field( const field_type_id &field_to_find ) {
             return sm->get_field( pos() ).find_field( field_to_find );
-        }
-
-        bool add_field( const field_type_id &field_to_add, const int new_intensity,
-                        const time_duration &new_age ) {
-            const bool ret = sm->get_field( pos() ).add_field( field_to_add, new_intensity, new_age );
-            if( ret ) {
-                sm->field_count++;
-            }
-
-            return ret;
         }
 
         int get_radiation() const {
@@ -345,4 +339,4 @@ struct maptile {
         }
 };
 
-#endif
+#endif // CATA_SRC_SUBMAP_H

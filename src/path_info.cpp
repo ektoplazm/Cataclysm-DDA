@@ -2,11 +2,11 @@
 
 #include <clocale>
 #include <cstdlib>
-#include <utility>
 
 #include "enums.h"
 #include "filesystem.h"
 #include "options.h"
+#include "rng.h"
 
 #if defined(_WIN32)
 #include <windows.h>
@@ -36,6 +36,7 @@ static std::string autopickup_value;
 static std::string keymap_value;
 static std::string options_value;
 static std::string memorialdir_value;
+static std::string langdir_value;
 
 void PATH_INFO::init_base_path( std::string path )
 {
@@ -83,13 +84,16 @@ void PATH_INFO::set_standard_filenames()
 #if defined(DATA_DIR_PREFIX)
         datadir_value = base_path_value + "share/cataclysm-dda/";
         gfxdir_value = datadir_value + "gfx/";
+        langdir_value = datadir_value + "lang/";
 #else
         datadir_value = base_path_value + "data/";
         gfxdir_value = base_path_value + "gfx/";
+        langdir_value = base_path_value + "lang/";
 #endif
     } else {
         datadir_value = "data/";
         gfxdir_value = "gfx/";
+        langdir_value = "lang/";
     }
 
     // Shared dirs
@@ -257,33 +261,9 @@ std::string PATH_INFO::lastworld()
 {
     return config_dir_value + "lastworld.json";
 }
-std::string PATH_INFO::legacy_autopickup()
-{
-    return "data/auto_pickup.txt";
-}
-std::string PATH_INFO::legacy_autopickup2()
-{
-    return config_dir_value + "auto_pickup.txt";
-}
 std::string PATH_INFO::legacy_fontdata()
 {
     return datadir_value + "fontdata.json";
-}
-std::string PATH_INFO::legacy_keymap()
-{
-    return "data/keymap.txt";
-}
-std::string PATH_INFO::legacy_options()
-{
-    return "data/options.txt";
-}
-std::string PATH_INFO::legacy_options2()
-{
-    return config_dir_value + "options.txt";
-}
-std::string PATH_INFO::legacy_worldoptions()
-{
-    return "worldoptions.txt";
 }
 std::string PATH_INFO::memorialdir()
 {
@@ -373,6 +353,14 @@ std::string PATH_INFO::gfxdir()
 {
     return gfxdir_value;
 }
+std::string PATH_INFO::langdir()
+{
+    return langdir_value;
+}
+std::string PATH_INFO::lang_file()
+{
+    return "cataclysm-dda.mo";
+}
 std::string PATH_INFO::data_sound()
 {
     return datadir_value + "sound";
@@ -394,6 +382,16 @@ std::string PATH_INFO::title( const holiday current_holiday )
     std::string theme_basepath = datadir_value + "title/";
     std::string theme_extension = ".title";
     std::string theme_fallback = theme_basepath + "en.title";
+
+    if( x_in_y( get_option<int>( "ALT_TITLE" ), 100 ) ) {
+        theme_extension = ".alt1";
+        theme_fallback = datadir_value + "title/" + "en.alt1";
+    }
+
+    if( !get_option<bool>( "SEASONAL_TITLE" ) ) {
+        return find_translated_file( theme_basepath, theme_extension, theme_fallback );
+    }
+
     switch( current_holiday ) {
         case holiday::new_year:
             theme_extension = ".new_year";

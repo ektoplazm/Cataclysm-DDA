@@ -1,24 +1,24 @@
 #include "monfaction.h"
 
+#include <algorithm>
 #include <cstddef>
-#include <queue>
-#include <vector>
 #include <map>
+#include <queue>
 #include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "debug.h"
+#include "int_id.h"
 #include "json.h"
 #include "string_id.h"
 
-std::unordered_map< mfaction_str_id, mfaction_id > faction_map;
-std::vector< monfaction > faction_list;
+static std::unordered_map< mfaction_str_id, mfaction_id > faction_map;
+static std::vector< monfaction > faction_list;
 
-void add_to_attitude_map( const std::set< std::string > &keys, mfaction_att_map &map,
-                          mf_attitude value );
-
-void apply_base_faction( const monfaction &base, monfaction &faction );
+static void add_to_attitude_map( const std::set< std::string > &keys, mfaction_att_map &map,
+                                 mf_attitude value );
 
 /** @relates int_id */
 template<>
@@ -96,9 +96,7 @@ static void apply_base_faction( mfaction_id base, mfaction_id faction_id )
     for( const auto &pair : base.obj().attitude_map ) {
         // Fill in values set in base faction, but not in derived one
         auto &faction = faction_list[faction_id.to_i()];
-        if( faction.attitude_map.count( pair.first ) == 0 ) {
-            faction.attitude_map.insert( pair );
-        }
+        faction.attitude_map.insert( pair );
     }
 }
 
@@ -190,7 +188,7 @@ void monfactions::finalize()
     // Bad json
     if( !unloaded.empty() ) {
         std::string names;
-        for( auto &fac : unloaded ) {
+        for( const auto &fac : unloaded ) {
             names.append( fac.id().str() );
             names.append( " " );
             auto &the_faction = faction_list[fac.to_i()];
@@ -228,12 +226,15 @@ void monfactions::load_monster_faction( const JsonObject &jo )
     std::set< std::string > by_mood = jo.get_tags( "by_mood" );
     std::set< std::string > neutral = jo.get_tags( "neutral" );
     std::set< std::string > friendly = jo.get_tags( "friendly" );
+    std::set< std::string > hate = jo.get_tags( "hate" );
     // Need to make sure adding new factions won't invalidate our current faction's reference
     // That +1 is for base faction
-    faction_list.reserve( faction_list.size() + by_mood.size() + neutral.size() + friendly.size() + 1 );
+    faction_list.reserve( faction_list.size() + by_mood.size() + neutral.size() + friendly.size() +
+                          hate.size() + 1 );
     prealloc( by_mood );
     prealloc( neutral );
     prealloc( friendly );
+    prealloc( hate );
 
     std::string name = jo.get_string( "name" );
     mfaction_id cur_id = get_or_add_faction( mfaction_str_id( name ) );
@@ -246,4 +247,5 @@ void monfactions::load_monster_faction( const JsonObject &jo )
     add_to_attitude_map( by_mood, faction.attitude_map, MFA_BY_MOOD );
     add_to_attitude_map( neutral, faction.attitude_map, MFA_NEUTRAL );
     add_to_attitude_map( friendly, faction.attitude_map, MFA_FRIENDLY );
+    add_to_attitude_map( hate, faction.attitude_map, MFA_HATE );
 }
