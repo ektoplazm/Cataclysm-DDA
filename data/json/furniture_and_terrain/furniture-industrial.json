@@ -459,9 +459,11 @@
       "sound_fail": "thud!",
       "items": [ { "item": "scrap_copper", "count": [ 1, 4 ] }, { "item": "cable", "count": [ 1, 4 ] } ]
     },
-    "deconstruct": { "items": [ { "item": "cable", "count": 4 } ] }
-  },
-  {
+    "deconstruct": {
+      "items": [
+        { "item": "cable", "charges": [ 1, 4 ] }
+      ]
+    },  {
     "type": "furniture",
     "id": "f_capacitor",
     "name": "capacitor bank",
