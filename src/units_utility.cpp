@@ -1,5 +1,7 @@
 #include "units_utility.h"
 
+#include <string>
+
 #include "cata_utility.h"
 #include "options.h"
 #include "string_formatter.h"
@@ -73,6 +75,21 @@ double convert_weight( const units::mass &weight )
         ret /= 1000;
     } else {
         ret /= 453.6;
+    }
+    return ret;
+}
+
+double convert_length_cm_in( const units::length &length )
+{
+
+    double ret = to_millimeter( length );
+    const bool metric = get_option<std::string>( "DISTANCE_UNITS" ) == "metric";
+    if( metric ) {
+        ret /= 10;
+    } else {
+        // imperial's a doozy, we can only try to approximate
+        // so first we convert it to inches which are the smallest unit
+        ret /= 25.4;
     }
     return ret;
 }

@@ -1,13 +1,12 @@
 #include "martialarts.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstdlib>
+#include <functional>
 #include <iterator>
 #include <map>
 #include <memory>
 #include <string>
-#include <unordered_map>
 #include <utility>
 
 #include "bodypart.h"
@@ -19,6 +18,7 @@
 #include "debug.h"
 #include "effect.h"
 #include "enums.h"
+#include "game_constants.h"
 #include "generic_factory.h"
 #include "input.h"
 #include "item.h"
@@ -27,11 +27,9 @@
 #include "map.h"
 #include "output.h"
 #include "pimpl.h"
-#include "player.h"
 #include "point.h"
 #include "skill.h"
 #include "string_formatter.h"
-#include "string_id.h"
 #include "translations.h"
 #include "ui_manager.h"
 #include "value_ptr.h"
@@ -42,7 +40,7 @@ static const bionic_id bio_armor_arms( "bio_armor_arms" );
 static const bionic_id bio_armor_legs( "bio_armor_legs" );
 static const bionic_id bio_cqb( "bio_cqb" );
 
-static const flag_str_id json_flag_UNARMED_WEAPON( "UNARMED_WEAPON" );
+static const flag_id json_flag_UNARMED_WEAPON( "UNARMED_WEAPON" );
 
 namespace
 {
@@ -136,7 +134,7 @@ void ma_requirements::load( const JsonObject &jo, const std::string & )
     optional( jo, was_loaded, "wall_adjacent", wall_adjacent, false );
 
     optional( jo, was_loaded, "req_buffs", req_buffs, auto_flags_reader<mabuff_id> {} );
-    optional( jo, was_loaded, "req_flags", req_flags, auto_flags_reader<flag_str_id> {} );
+    optional( jo, was_loaded, "req_flags", req_flags, auto_flags_reader<flag_id> {} );
 
     optional( jo, was_loaded, "skill_requirements", min_skill, ma_skill_reader {} );
     optional( jo, was_loaded, "weapon_damage_requirements", min_damage, ma_weapon_damage_reader {} );
@@ -381,7 +379,7 @@ void check_martialarts()
 class ma_buff_effect_type : public effect_type
 {
     public:
-        ma_buff_effect_type( const ma_buff &buff ) {
+        explicit ma_buff_effect_type( const ma_buff &buff ) {
             id = buff.get_effect_id();
             max_intensity = buff.max_stacks;
             // add_effect add the duration to an existing effect, but it must never be
@@ -400,7 +398,7 @@ class ma_buff_effect_type : public effect_type
         }
 };
 
-void finialize_martial_arts()
+void finalize_martial_arts()
 {
     // This adds an effect type for each ma_buff, so we can later refer to it and don't need a
     // redundant definition of those effects in json.
@@ -484,7 +482,7 @@ bool ma_requirements::is_valid_character( const Character &u ) const
 
 bool ma_requirements::is_valid_weapon( const item &i ) const
 {
-    for( const flag_str_id &flag : req_flags ) {
+    for( const flag_id &flag : req_flags ) {
         if( !i.has_flag( flag ) ) {
             return false;
         }

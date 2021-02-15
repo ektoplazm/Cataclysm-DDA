@@ -2,14 +2,17 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <functional>
 #include <initializer_list>
 #include <list>
 #include <memory>
+#include <new>
 #include <string>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
-#include "activity_actor.h"
+#include "activity_actor_definitions.h"
 #include "activity_type.h"
 #include "advanced_inv_listitem.h"
 #include "advanced_inv_pagination.h"
@@ -32,6 +35,7 @@
 #include "item_category.h"
 #include "item_contents.h"
 #include "item_location.h"
+#include "item_pocket.h"
 #include "item_stack.h"
 #include "map.h"
 #include "map_selector.h"
@@ -53,7 +57,6 @@
 #include "ui_manager.h"
 #include "uistate.h"
 #include "units.h"
-#include "units_fwd.h"
 #include "units_utility.h"
 #include "vehicle.h"
 #include "vehicle_selector.h"
@@ -442,7 +445,7 @@ void advanced_inventory::print_items( const advanced_inventory_pane &pane, bool 
 
 struct advanced_inv_sorter {
     advanced_inv_sortby sortby;
-    advanced_inv_sorter( advanced_inv_sortby sort ) {
+    explicit advanced_inv_sorter( advanced_inv_sortby sort ) {
         sortby = sort;
     }
     bool operator()( const advanced_inv_listitem &d1, const advanced_inv_listitem &d2 ) {
@@ -869,7 +872,7 @@ bool advanced_inventory::move_all_items( bool nested_call )
         if( spane.get_area() == AIM_INVENTORY ) {
             //add all solid top level items
             for( item &cloth :  player_character.worn ) {
-                for( item *it : cloth.contents.all_items_top() ) {
+                for( item *it : cloth.contents.all_items_top( item_pocket::pocket_type::CONTAINER ) ) {
                     if( !it->made_of_from_type( phase_id::SOLID ) ) {
                         continue;
                     }
@@ -929,6 +932,7 @@ bool advanced_inventory::move_all_items( bool nested_call )
         if( dpane.get_area() == AIM_INVENTORY || dpane.get_area() == AIM_WORN ) {
             player_character.activity.coords.push_back( player_character.pos() );
             std::vector<item_location> target_items;
+            std::vector<item_location> target_items_favorites;
             std::vector<int> quantities;
             item_stack::iterator stack_begin, stack_end;
             if( panes[src].in_vehicle() ) {
@@ -955,9 +959,18 @@ bool advanced_inventory::move_all_items( bool nested_call )
                     continue;
                 }
                 if( spane.in_vehicle() ) {
-                    target_items.emplace_back( vehicle_cursor( *sarea.veh, sarea.vstor ), &*it );
+                    if( it->is_favorite ) {
+                        target_items_favorites.emplace_back( vehicle_cursor( *sarea.veh, sarea.vstor ), &*it );
+                    } else {
+                        target_items.emplace_back( vehicle_cursor( *sarea.veh, sarea.vstor ), &*it );
+                    }
+
                 } else {
-                    target_items.emplace_back( map_cursor( sarea.pos ), &*it );
+                    if( it->is_favorite ) {
+                        target_items_favorites.emplace_back( map_cursor( sarea.pos ), &*it );
+                    } else {
+                        target_items.emplace_back( map_cursor( sarea.pos ), &*it );
+                    }
                 }
                 // quantity of 0 means move all
                 quantities.push_back( 0 );
@@ -966,6 +979,12 @@ bool advanced_inventory::move_all_items( bool nested_call )
             if( filtered_any_bucket ) {
                 add_msg( m_info, _( "Skipping filled buckets to avoid spilling their contents." ) );
             }
+
+            // move all the favorite items only if there are no other items.
+            if( target_items.empty() ) {
+                target_items = target_items_favorites;
+            }
+
             player_character.assign_activity( player_activity( pickup_activity_actor(
                                                   target_items,
                                                   quantities,
@@ -986,6 +1005,8 @@ bool advanced_inventory::move_all_items( bool nested_call )
 
             // Find target items and quantities thereof for the new activity
             std::vector<item_location> target_items;
+            std::vector<item_location> target_items_favorites;
+
             std::vector<int> quantities;
 
             item_stack::iterator stack_begin, stack_end;
@@ -1012,9 +1033,18 @@ bool advanced_inventory::move_all_items( bool nested_call )
                     continue;
                 }
                 if( spane.in_vehicle() ) {
-                    target_items.emplace_back( vehicle_cursor( *sarea.veh, sarea.vstor ), &*it );
+                    if( it->is_favorite ) {
+                        target_items_favorites.emplace_back( vehicle_cursor( *sarea.veh, sarea.vstor ), &*it );
+                    } else {
+                        target_items.emplace_back( vehicle_cursor( *sarea.veh, sarea.vstor ), &*it );
+                    }
+
                 } else {
-                    target_items.emplace_back( map_cursor( sarea.pos ), &*it );
+                    if( it->is_favorite ) {
+                        target_items_favorites.emplace_back( map_cursor( sarea.pos ), &*it );
+                    } else {
+                        target_items.emplace_back( map_cursor( sarea.pos ), &*it );
+                    }
                 }
                 // quantity of 0 means move all
                 quantities.push_back( 0 );
@@ -1022,6 +1052,11 @@ bool advanced_inventory::move_all_items( bool nested_call )
 
             if( filtered_any_bucket ) {
                 add_msg( m_info, _( "Skipping filled buckets to avoid spilling their contents." ) );
+            }
+
+            // move all the favorite items only if there are no other items.
+            if( target_items.empty() ) {
+                target_items = target_items_favorites;
             }
 
             player_character.assign_activity( player_activity( move_items_activity_actor(
@@ -1330,7 +1365,7 @@ bool advanced_inventory::action_move_item( advanced_inv_listitem *sitem,
         do_return_entry();
 
         // if worn, we need to fix with the worn index number (starts at -2, as -1 is weapon)
-        int idx = srcarea == AIM_INVENTORY ? sitem->idx : player::worn_position_to_index( sitem->idx );
+        int idx = srcarea == AIM_INVENTORY ? sitem->idx : player::worn_position_to_index( sitem->idx ) + 1;
 
         if( srcarea == AIM_WORN && destarea == AIM_INVENTORY ) {
             // this is ok because worn items are never stacked (can't move more than 1).
@@ -1678,7 +1713,7 @@ class query_destination_callback : public uilist_callback
         // Render a fancy ASCII grid at the left of the menu.
         void draw_squares( const uilist *menu );
     public:
-        query_destination_callback( advanced_inventory &adv_inv ) : _adv_inv( adv_inv ) {}
+        explicit query_destination_callback( advanced_inventory &adv_inv ) : _adv_inv( adv_inv ) {}
         void refresh( uilist *menu ) override {
             draw_squares( menu );
         }

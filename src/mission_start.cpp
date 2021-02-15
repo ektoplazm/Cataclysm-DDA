@@ -1,5 +1,7 @@
-#include <algorithm>
+#include "mission.h" // IWYU pragma: associated
+
 #include <memory>
+#include <new>
 #include <vector>
 
 #include "character.h"
@@ -9,14 +11,12 @@
 #include "enum_traits.h"
 #include "game.h"
 #include "game_constants.h"
-#include "int_id.h"
 #include "item.h"
 #include "line.h"
 #include "map.h"
 #include "map_iterator.h"
 #include "mapdata.h"
 #include "messages.h"
-#include "mission.h" // IWYU pragma: associated
 #include "name.h"
 #include "npc.h"
 #include "npc_class.h"
@@ -28,6 +28,7 @@
 #include "rng.h"
 #include "string_formatter.h"
 #include "translations.h"
+#include "units.h"
 
 static const itype_id itype_software_hacking( "software_hacking" );
 static const itype_id itype_software_math( "software_math" );
@@ -59,7 +60,7 @@ void mission_start::place_dog( mission *miss )
         debugmsg( "Couldn't find NPC!  %d", miss->npc_id.get_value() );
         return;
     }
-    get_player_character().i_add( item( "dog_whistle", 0 ) );
+    get_player_character().i_add( item( "dog_whistle", calendar::turn_zero ) );
     add_msg( _( "%s gave you a dog whistle." ), dev->name );
 
     miss->target = house;
@@ -192,7 +193,7 @@ void mission_start::place_npc_software( mission *miss )
         debugmsg( "Couldn't find NPC!  %d", miss->npc_id.get_value() );
         return;
     }
-    get_player_character().i_add( item( "usb_drive", 0 ) );
+    get_player_character().i_add( item( "usb_drive", calendar::turn_zero ) );
     add_msg( _( "%s gave you a USB drive." ), dev->name );
 
     std::string type = "house";
@@ -549,7 +550,8 @@ void mission_start::ranch_scavenger_1( mission *miss )
 
     site = mission_util::target_om_ter_random( "ranch_camp_49", 1, miss, false, RANCH_SIZE );
     bay.load( project_to<coords::sm>( site ), false );
-    bay.place_items( item_group_id( "mechanics" ), 65, point( 9, 13 ), point( 10, 16 ), true, 0 );
+    bay.place_items( item_group_id( "mechanics" ), 65, point( 9, 13 ), point( 10, 16 ), true,
+                     calendar::turn_zero );
     bay.draw_square_ter( t_chainfence, point( 0, 22 ), point( 7, 22 ) );
     bay.draw_square_ter( t_dirt, point( 2, 22 ), point( 3, 22 ) );
     bay.spawn_item( point( 7, 19 ), "30gal_drum" );
@@ -714,16 +716,10 @@ void mission_start::create_ice_lab_console( mission *miss )
     mission_util::reveal_road( player_character.global_omt_location(), target, overmap_buffer );
 }
 
-void mission_start::reveal_lab_train_depot( mission *miss )
+static bool has_console( const tripoint_abs_omt &location, const int mission_id )
 {
-    Character &player_character = get_player_character();
-    // Find and prepare lab location.
-    tripoint_abs_omt loc = player_character.global_omt_location();
-    loc.z() = -4;  // tunnels are at z = -4
-    const tripoint_abs_omt place = overmap_buffer.find_closest( loc, "lab_train_depot", 0, false );
-
     tinymap compmap;
-    compmap.load( project_to<coords::sm>( place ), false );
+    compmap.load( project_to<coords::sm>( location ), false );
     cata::optional<tripoint> comppoint;
 
     for( const tripoint &point : compmap.points_on_zlevel() ) {
@@ -734,15 +730,39 @@ void mission_start::reveal_lab_train_depot( mission *miss )
     }
 
     if( !comppoint ) {
-        debugmsg( "Could not find a computer in the lab train depot, mission will fail." );
-        return;
+        return false;
     }
 
     computer *tmpcomp = compmap.computer_at( *comppoint );
-    tmpcomp->set_mission( miss->get_id() );
+    tmpcomp->set_mission( mission_id );
     tmpcomp->add_option( _( "Download Routing Software" ), COMPACT_DOWNLOAD_SOFTWARE, 0 );
 
     compmap.save();
+    return true;
+}
+
+void mission_start::reveal_lab_train_depot( mission *miss )
+{
+    Character &player_character = get_player_character();
+    // Find and prepare lab location.
+    tripoint_abs_omt loc = player_character.global_omt_location();
+    loc.z() = -4;  // tunnels are at z = -4
+    tripoint_abs_omt place;
+    const int mission_id = miss->get_id();
+
+    omt_find_params params = {{ {{ std::make_pair( "lab_train_depot", ot_match_type::type ) }} }};
+    const std::vector<tripoint_abs_omt> all_omts_near = overmap_buffer.find_all( loc, params );
+    // sort it by range
+    std::multimap<int, tripoint_abs_omt> omts_by_range;
+    for( const tripoint_abs_omt &location : all_omts_near ) {
+        omts_by_range.emplace( rl_dist( loc, location ), location );
+    }
+    for( const std::pair<const int, tripoint_abs_omt> &location : omts_by_range ) {
+        if( has_console( location.second, mission_id ) ) {
+            place = location.second;
+            break;
+        }
+    }
 
     // Target the lab entrance.
     const tripoint_abs_omt target = mission_util::target_closest_lab_entrance( place, 2, miss );

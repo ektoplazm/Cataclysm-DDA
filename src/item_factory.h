@@ -2,8 +2,8 @@
 #ifndef CATA_SRC_ITEM_FACTORY_H
 #define CATA_SRC_ITEM_FACTORY_H
 
-#include <algorithm>
 #include <functional>
+#include <iosfwd>
 #include <list>
 #include <map>
 #include <memory>
@@ -16,12 +16,12 @@
 #include "item.h"
 #include "itype.h"
 #include "iuse.h"
-#include "string_id.h"
 #include "type_id.h"
 
 class Item_group;
 class Item_spawn_data;
 class relic;
+class translation;
 
 namespace cata
 {
@@ -182,7 +182,6 @@ class Item_factory
         void load_comestible( const JsonObject &jo, const std::string &src );
         void load_engine( const JsonObject &jo, const std::string &src );
         void load_wheel( const JsonObject &jo, const std::string &src );
-        void load_fuel( const JsonObject &jo, const std::string &src );
         void load_gunmod( const JsonObject &jo, const std::string &src );
         void load_magazine( const JsonObject &jo, const std::string &src );
         void load_battery( const JsonObject &jo, const std::string &src );
@@ -309,7 +308,6 @@ class Item_factory
         void load( islot_tool &slot, const JsonObject &jo, const std::string &src );
         void load( islot_comestible &slot, const JsonObject &jo, const std::string &src );
         void load( islot_mod &slot, const JsonObject &jo, const std::string &src );
-        void load( islot_fuel &slot, const JsonObject &jo, const std::string &src );
         void load( islot_gun &slot, const JsonObject &jo, const std::string &src );
         void load( islot_gunmod &slot, const JsonObject &jo, const std::string &src );
         void load( islot_magazine &slot, const JsonObject &jo, const std::string &src );

@@ -1,11 +1,13 @@
 #include "itype.h"
 
 #include <cstdlib>
+#include <utility>
 
 #include "debug.h"
 #include "item.h"
 #include "make_static.h"
 #include "player.h"
+#include "recipe.h"
 #include "ret_val.h"
 #include "translations.h"
 
@@ -151,7 +153,7 @@ bool itype::can_have_charges() const
     if( gun && gun->clip > 0 ) {
         return true;
     }
-    if( has_flag( STATIC( flag_str_id( "CAN_HAVE_CHARGES" ) ) ) ) {
+    if( has_flag( STATIC( flag_id( "CAN_HAVE_CHARGES" ) ) ) ) {
         return true;
     }
     return false;

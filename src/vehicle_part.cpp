@@ -1,7 +1,10 @@
+#include "vehicle.h" // IWYU pragma: associated
+
 #include <algorithm>
 #include <cmath>
 #include <memory>
 #include <set>
+#include <string>
 
 #include "cata_assert.h"
 #include "character.h"
@@ -19,12 +22,10 @@
 #include "npc.h"
 #include "ret_val.h"
 #include "string_formatter.h"
-#include "string_id.h"
 #include "translations.h"
 #include "units.h"
 #include "value_ptr.h"
 #include "veh_type.h"
-#include "vehicle.h" // IWYU pragma: associated
 #include "vpart_position.h"
 #include "weather.h"
 
@@ -47,9 +48,9 @@ vehicle_part::vehicle_part( const vpart_id &vp, const std::string &variant_id, c
     // Mark base item as being installed as a vehicle part
     base.set_flag( flag_VEHICLE );
 
-    if( base.typeId() != vp->item ) {
+    if( base.typeId() != vp->base_item ) {
         debugmsg( "incorrect vehicle part item, expected: %s, received: %s",
-                  vp->item.c_str(), base.typeId().c_str() );
+                  vp->base_item.c_str(), base.typeId().c_str() );
     }
 }
 

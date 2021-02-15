@@ -1,31 +1,36 @@
+#include "player.h" // IWYU pragma: associated
+
 #include <algorithm> //std::min
 #include <cstddef>
+#include <functional>
 #include <memory>
+#include <string>
 
 #include "avatar.h"
 #include "bionics.h"
 #include "bodypart.h"
+#include "calendar.h"
 #include "cata_utility.h"
 #include "catacharset.h"
 #include "color.h"
 #include "compatibility.h"
+#include "cursesdef.h"
 #include "enums.h"
 #include "flat_set.h"
 #include "game.h"
 #include "input.h"
 #include "inventory.h"
+#include "material.h"
 #include "options.h"
 #include "output.h"
+#include "make_static.h"
 #include "pimpl.h"
-#include "player.h" // IWYU pragma: associated
 #include "string_formatter.h"
-#include "string_id.h"
 #include "translations.h"
 #include "ui.h"
 #include "ui_manager.h"
 #include "uistate.h"
 #include "units.h"
-#include "units_fwd.h"
 
 // '!', '-' and '=' are uses as default bindings in the menu
 static const invlet_wrapper
@@ -191,34 +196,31 @@ static void draw_bionics_titlebar( const catacurses::window &window, avatar *p,
                                    bionic_menu_mode mode )
 {
     input_context ctxt( "BIONICS", keyboard_mode::keychar );
-    static const flag_str_id json_flag_PERPETUAL( "PERPETUAL" );
 
     werase( window );
     std::string fuel_string;
     bool found_fuel = false;
     fuel_string = _( "Available Fuel: " );
     for( const bionic &bio : *p->my_bionics ) {
-        for( const itype_id &fuel : p->get_fuel_available( bio.id ) ) {
+        for( const material_id &fuel : p->get_fuel_available( bio.id ) ) {
             found_fuel = true;
-            const item temp_fuel( fuel );
-            if( temp_fuel.has_flag( json_flag_PERPETUAL ) ) {
-                if( fuel == itype_id( "sunlight" ) && !g->is_in_sunlight( p->pos() ) ) {
+            if( fuel->get_fuel_data().is_perpetual_fuel ) {
+                if( fuel == material_id( "sunlight" ) && !g->is_in_sunlight( p->pos() ) ) {
                     continue;
                 }
-                fuel_string += colorize( temp_fuel.tname(), c_green ) + " ";
+                fuel_string += colorize( fuel->name(), c_green ) + " ";
                 continue;
             }
-            fuel_string += temp_fuel.tname() + ": " + colorize( p->get_value( fuel.str() ),
+            fuel_string += fuel->name() + ": " + colorize( p->get_value( fuel.str() ),
                            c_green ) + "/" + std::to_string( p->get_total_fuel_capacity( fuel ) ) + " ";
         }
         if( bio.info().is_remote_fueled && p->has_active_bionic( bio.id ) ) {
-            const itype_id rem_fuel = p->find_remote_fuel( true );
+            const material_id rem_fuel = p->find_remote_fuel( true );
             if( !rem_fuel.is_empty() ) {
-                const item tmp_rem_fuel( rem_fuel );
-                if( tmp_rem_fuel.has_flag( json_flag_PERPETUAL ) ) {
-                    fuel_string += colorize( tmp_rem_fuel.tname(), c_green ) + " ";
+                if( rem_fuel->get_fuel_data().is_perpetual_fuel ) {
+                    fuel_string += colorize( rem_fuel->name(), c_green ) + " ";
                 } else {
-                    fuel_string += tmp_rem_fuel.tname() + ": " + colorize( p->get_value( "rem_" + rem_fuel.str() ),
+                    fuel_string += rem_fuel->name() + ": " + colorize( p->get_value( "rem_" + rem_fuel.str() ),
                                    c_green ) + " ";
                 }
                 found_fuel = true;
@@ -312,7 +314,7 @@ static std::string build_bionic_poweronly_string( const bionic &bio )
                               : string_format( _( "%s/%d turns" ), units::display( bio_data.power_over_time ),
                                                bio_data.charge_time ) );
     }
-    if( bio_data.has_flag( "BIONIC_TOGGLED" ) ) {
+    if( bio_data.has_flag( STATIC( json_character_flag( "BIONIC_TOGGLED" ) ) ) ) {
         properties.push_back( bio.powered ? _( "ON" ) : _( "OFF" ) );
     }
     if( bio.incapacitated_time > 0_turns ) {
@@ -498,7 +500,7 @@ static void draw_connectors( const catacurses::window &win, const point &start,
 static nc_color get_bionic_text_color( const bionic &bio, const bool isHighlightedBionic )
 {
     nc_color type = c_white;
-    bool is_power_source = bio.id->has_flag( "BIONIC_POWER_SOURCE" );
+    bool is_power_source = bio.id->has_flag( STATIC( json_character_flag( "BIONIC_POWER_SOURCE" ) ) );
     if( bio.id->activated ) {
         if( isHighlightedBionic ) {
             if( bio.powered && !is_power_source ) {

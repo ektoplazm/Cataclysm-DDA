@@ -1,25 +1,34 @@
 #include "item_group.h"
 
 #include <algorithm>
+#include <cstdlib>
+#include <new>
 #include <set>
+#include <string>
+#include <type_traits>
+#include <unordered_map>
 
 #include "calendar.h"
 #include "cata_assert.h"
 #include "compatibility.h"
 #include "debug.h"
+#include "enum_traits.h"
 #include "enums.h"
 #include "flag.h"
-#include "flat_set.h"
 #include "generic_factory.h"
 #include "item.h"
+#include "item_contents.h"
 #include "item_factory.h"
 #include "item_pocket.h"
 #include "itype.h"
 #include "json.h"
+#include "make_static.h"
+#include "options.h"
 #include "relic.h"
 #include "ret_val.h"
 #include "rng.h"
 #include "type_id.h"
+#include "units.h"
 
 static const std::string null_item_id( "null" );
 
@@ -96,7 +105,7 @@ static item_pocket::pocket_type guess_pocket_for( const item &container, const i
 }
 
 static void put_into_container(
-    Item_spawn_data::ItemList &items, const cata::optional<itype_id> container_type,
+    Item_spawn_data::ItemList &items, const cata::optional<itype_id> &container_type,
     time_point birthday, Item_spawn_data::overflow_behaviour on_overflow,
     const std::string &context )
 {
@@ -181,6 +190,8 @@ item Single_item_creator::create_single( const time_point &birthday, RecursionLi
         int qty = tmp.charges;
         if( modifier ) {
             qty = rng( modifier->charges.first, modifier->charges.second );
+        } else if( tmp.made_of_from_type( phase_id::LIQUID ) ) {
+            qty = item::INFINITE_CHARGES;
         }
         // TODO: change the spawn lists to contain proper references to containers
         tmp = tmp.in_its_container( qty );
@@ -208,9 +219,14 @@ Item_spawn_data::ItemList Single_item_creator::create(
                       modifier_count.first, modifier_count.second );
         }
     }
+    float spawn_rate = get_option<float>( "ITEM_SPAWNRATE" );
     for( ; cnt > 0; cnt-- ) {
         if( type == S_ITEM ) {
             const item itm = create_single( birthday, rec );
+            if( flags & spawn_flags::use_spawn_rate && !itm.has_flag( STATIC( flag_id( "MISSION_ITEM" ) ) ) &&
+                rng_float( 0, 1 ) > spawn_rate ) {
+                continue;
+            }
             if( !itm.is_null() ) {
                 result.push_back( itm );
             }
@@ -288,19 +304,21 @@ bool Single_item_creator::remove_item( const itype_id &itemid )
     return type == S_NONE;
 }
 
-void Single_item_creator::replace_item( const itype_id &itemid, const itype_id &replacementid )
+void Single_item_creator::replace_items( const std::unordered_map<itype_id, itype_id>
+        &replacements )
 {
     if( modifier ) {
-        modifier->replace_item( itemid, replacementid );
+        modifier->replace_items( replacements );
     }
     if( type == S_ITEM ) {
-        if( itemid.str() == id ) {
-            id = replacementid.str();
+        auto it = replacements.find( itype_id( id ) );
+        if( it != replacements.end() ) {
+            id = it->second.str();
         }
     } else if( type == S_ITEM_GROUP ) {
         Item_spawn_data *isd = item_controller->get_group( item_group_id( id ) );
         if( isd != nullptr ) {
-            isd->replace_item( itemid, replacementid );
+            isd->replace_items( replacements );
         }
     }
 }
@@ -519,8 +537,12 @@ void Item_modifier::modify( item &new_item, const std::string &context ) const
         }
     }
 
-    for( const flag_str_id &flag : custom_flags ) {
+    for( const flag_id &flag : custom_flags ) {
         new_item.set_flag( flag );
+    }
+
+    if( !snippets.empty() ) {
+        new_item.snip_id = random_entry( snippets );
     }
 }
 
@@ -557,16 +579,16 @@ bool Item_modifier::remove_item( const itype_id &itemid )
     return false;
 }
 
-void Item_modifier::replace_item( const itype_id &itemid, const itype_id &replacementid )
+void Item_modifier::replace_items( const std::unordered_map<itype_id, itype_id> &replacements )
 {
     if( ammo ) {
-        ammo->replace_item( itemid, replacementid );
+        ammo->replace_items( replacements );
     }
     if( container ) {
-        container->replace_item( itemid, replacementid );
+        container->replace_items( replacements );
     }
     if( contents ) {
-        contents->replace_item( itemid, replacementid );
+        contents->replace_items( replacements );
     }
 }
 
@@ -700,10 +722,10 @@ bool Item_group::remove_item( const itype_id &itemid )
     return items.empty();
 }
 
-void Item_group::replace_item( const itype_id &itemid, const itype_id &replacementid )
+void Item_group::replace_items( const std::unordered_map<itype_id, itype_id> &replacements )
 {
     for( const std::unique_ptr<Item_spawn_data> &elem : items ) {
-        ( elem )->replace_item( itemid, replacementid );
+        ( elem )->replace_items( replacements );
     }
 }
 
@@ -728,18 +750,18 @@ std::set<const itype *> Item_group::every_item() const
 }
 
 item_group::ItemList item_group::items_from( const item_group_id &group_id,
-        const time_point &birthday )
+        const time_point &birthday, spawn_flags flags )
 {
     const Item_spawn_data *group = item_controller->get_group( group_id );
     if( group == nullptr ) {
         return ItemList();
     }
-    return group->create( birthday );
+    return group->create( birthday, flags );
 }
 
 item_group::ItemList item_group::items_from( const item_group_id &group_id )
 {
-    return items_from( group_id, 0 );
+    return items_from( group_id, calendar::turn_zero );
 }
 
 item item_group::item_from( const item_group_id &group_id, const time_point &birthday )
@@ -753,7 +775,7 @@ item item_group::item_from( const item_group_id &group_id, const time_point &bir
 
 item item_group::item_from( const item_group_id &group_id )
 {
-    return item_from( group_id, 0 );
+    return item_from( group_id, calendar::turn_zero );
 }
 
 bool item_group::group_is_defined( const item_group_id &group_id )

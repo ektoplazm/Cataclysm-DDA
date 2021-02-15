@@ -1,6 +1,8 @@
 #include "teleport.h"
 
+#include <cmath>
 #include <memory>
+#include <string>
 
 #include "calendar.h"
 #include "character.h"
@@ -18,7 +20,7 @@
 #include "type_id.h"
 #include "viewer.h"
 
-static const flag_str_id json_flag_DIMENSIONAL_ANCHOR( "DIMENSIONAL_ANCHOR" );
+static const flag_id json_flag_DIMENSIONAL_ANCHOR( "DIMENSIONAL_ANCHOR" );
 
 static const efftype_id effect_grabbed( "grabbed" );
 static const efftype_id effect_teleglow( "teleglow" );
